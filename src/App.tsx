@@ -183,13 +183,15 @@ export default function App() {
 
   // --- Supabase Cloud Database Integration ---
   const [supabaseUrl, setSupabaseUrl] = useState(() => {
-    return localStorage.getItem('wc_supabase_url') || '';
+    return localStorage.getItem('wc_supabase_url') || import.meta.env.VITE_SUPABASE_URL || '';
   });
   const [supabaseKey, setSupabaseKey] = useState(() => {
-    return localStorage.getItem('wc_supabase_key') || '';
+    return localStorage.getItem('wc_supabase_key') || import.meta.env.VITE_SUPABASE_ANON_KEY || '';
   });
   const [dbMode, setDbMode] = useState<'local' | 'supabase'>(() => {
-    return (localStorage.getItem('wc_db_mode') as 'local' | 'supabase') || 'local';
+    const saved = localStorage.getItem('wc_db_mode');
+    if (saved) return saved as 'local' | 'supabase';
+    return (import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY) ? 'supabase' : 'local';
   });
   const [dbConnected, setDbConnected] = useState(false);
 
@@ -530,6 +532,8 @@ export default function App() {
         if (success) {
           setDbMode('supabase');
           alert('云同步模式连接成功！已载入云端共享账本数据。');
+        } else {
+          alert('连接 Supabase 数据库失败！\n\n原因：你的 Supabase 数据库中还没有创建该项目需要的表格（如 wc_members、wc_bets、wc_transactions 等）。\n\n解决方法：请把页面最下方的“数据库初始化 SQL 脚本”复制，粘贴到 Supabase 网页的 SQL Editor 中并运行。');
         }
       }
       setSyncing(false);
