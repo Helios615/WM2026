@@ -415,47 +415,7 @@ export default function App() {
 
   // --- Dynamic Calculations ---
   
-  // Calculation of overall metrics
-  const getOverallStats = () => {
-    let totalDeposits = 0;
-    let totalWithdraws = 0;
-    let activeStakes = 0;
-    let settledStakes = 0;
-    let settledPayouts = 0;
-    
-    transactions.forEach(tx => {
-      if (tx.type === 'deposit') totalDeposits += tx.amount;
-      if (tx.type === 'withdraw') totalWithdraws += Math.abs(tx.amount);
-    });
 
-    bets.forEach(bet => {
-      if (bet.status === 'pending') {
-        activeStakes += bet.stake;
-      } else {
-        settledStakes += bet.stake;
-        settledPayouts += bet.payout;
-      }
-    });
-
-    const netProfit = settledPayouts - settledStakes;
-    // Current cash you physically hold = totalDeposits - totalWithdraws - activeStakes - settledStakes + settledPayouts
-    // (Essentially = deposits - withdraws + netProfit - activeStakes)
-    const currentBalance = totalDeposits - totalWithdraws + netProfit - activeStakes;
-    const roi = settledStakes > 0 ? (netProfit / settledStakes) * 100 : 0;
-
-    return {
-      totalDeposits,
-      totalWithdraws,
-      activeStakes,
-      settledStakes,
-      settledPayouts,
-      netProfit,
-      currentBalance,
-      roi
-    };
-  };
-
-  const overall = getOverallStats();
 
   // Calculate summaries for each member
   const getMemberSummaries = (): MemberSummary[] => {
@@ -1192,38 +1152,6 @@ export default function App() {
         </div>
       </header>
 
-      {/* --- Main Dashboard Metrics --- */}
-      <section className="dashboard-grid mt-6">
-        <div className="glass-panel stat-card info">
-          <span className="stat-label">总资金池存入</span>
-          <span className="stat-value">￥{overall.totalDeposits.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</span>
-          <span className="stat-desc">所有朋友存入本金累积</span>
-        </div>
-        <div className="glass-panel stat-card success glow-success">
-          <span className="stat-label">现金剩余余额</span>
-          <span className="stat-value text-profit">￥{overall.currentBalance.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</span>
-          <span className="stat-desc">你手中应有的现金余额</span>
-        </div>
-        <div className="glass-panel stat-card info">
-          <span className="stat-label">未结在途下注</span>
-          <span className="stat-value">￥{overall.activeStakes.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</span>
-          <span className="stat-desc">当前进行中的比赛本金</span>
-        </div>
-        <div className="glass-panel stat-card" style={{ '--primary': 'var(--warning)' } as any}>
-          <span className="stat-label">已结累计盈亏</span>
-          <span className={`stat-value ${overall.netProfit >= 0 ? 'text-profit' : 'text-loss'}`}>
-            {overall.netProfit >= 0 ? '+' : ''}￥{overall.netProfit.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}
-          </span>
-          <span className="stat-desc">已结算注单的净盈亏</span>
-        </div>
-        <div className="glass-panel stat-card" style={{ '--primary': 'var(--primary)' } as any}>
-          <span className="stat-label">已结投资回报率 (ROI)</span>
-          <span className={`stat-value ${overall.roi >= 0 ? 'text-profit' : 'text-loss'}`}>
-            {overall.roi.toFixed(2)}%
-          </span>
-          <span className="stat-desc">已结算注单盈亏比本金</span>
-        </div>
-      </section>
 
       {/* --- Navigation Tabs --- */}
       <div className="tab-container">
@@ -1406,21 +1334,25 @@ export default function App() {
                   </div>
 
                   {/* Personal Financial Summary */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                    <div className="bg-slate-900 p-3 rounded-lg border border-slate-800">
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+                    <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800/80">
+                      <span className="block text-xs text-[var(--text-muted)] uppercase mb-1 font-bold">当前可用余额</span>
+                      <span className="text-base font-bold text-[var(--success)]">￥{selectedMemberSummary.currentBalance.toFixed(2)}</span>
+                    </div>
+                    <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800/80">
                       <span className="block text-xs text-[var(--text-muted)] uppercase mb-1">累计充值</span>
                       <span className="text-base font-bold text-slate-100">￥{selectedMemberSummary.totalDeposit.toFixed(2)}</span>
                     </div>
-                    <div className="bg-slate-900 p-3 rounded-lg border border-slate-800">
-                      <span className="block text-xs text-[var(--text-muted)] uppercase mb-1">累计取款</span>
+                    <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800/80">
+                      <span className="block text-xs text-[var(--text-muted)] uppercase mb-1">累计提现</span>
                       <span className="text-base font-bold text-slate-100">￥{selectedMemberSummary.totalWithdraw.toFixed(2)}</span>
                     </div>
-                    <div className="bg-slate-900 p-3 rounded-lg border border-slate-800">
-                      <span className="block text-xs text-[var(--text-muted)] uppercase mb-1">在途本金</span>
+                    <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800/80">
+                      <span className="block text-xs text-[var(--text-muted)] uppercase mb-1">在途投注本金</span>
                       <span className="text-base font-bold text-amber-500">￥{selectedMemberSummary.activeBets.toFixed(2)}</span>
                     </div>
-                    <div className="bg-slate-900 p-3 rounded-lg border border-slate-800">
-                      <span className="block text-xs text-[var(--text-muted)] uppercase mb-1">个人总盈亏</span>
+                    <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800/80">
+                      <span className="block text-xs text-[var(--text-muted)] uppercase mb-1">历史累计净盈亏</span>
                       <span className={`text-base font-bold ${selectedMemberSummary.netProfit >= 0 ? 'text-profit' : 'text-loss'}`}>
                         {selectedMemberSummary.netProfit > 0 ? '+' : ''}￥{selectedMemberSummary.netProfit.toFixed(2)}
                       </span>
