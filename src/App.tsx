@@ -2185,9 +2185,6 @@ alter table wc_transactions disable row level security;`}
               <div className="w-full max-w-md" onClick={e => e.stopPropagation()}>
                 <div className="flex justify-between items-center mb-3 text-slate-400 px-2">
                   <span className="text-xs">微信群账单分享小票预览 (可截图分享)</span>
-                  <button className="text-slate-400 hover:text-white" onClick={() => setBillModalOpen(false)}>
-                    <X size={20} />
-                  </button>
                 </div>
                 
                 {/* Visual Bill Card */}
