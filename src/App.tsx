@@ -1928,9 +1928,6 @@ export default function App() {
               <h3 className="title-font text-lg font-bold">
                 {fundOpType === 'deposit' ? '💰 朋友存入充值' : '💸 朋友提取返还'} ({selectedMemberSummary.member.name})
               </h3>
-              <button className="text-slate-500 hover:text-white" onClick={() => setFundModalOpen(false)}>
-                <X size={20} />
-              </button>
             </div>
             <form onSubmit={handleFundOperation} className="space-y-4">
               <div className="bg-slate-900 p-3 rounded border border-slate-800 text-sm">
@@ -1984,9 +1981,6 @@ export default function App() {
                   <h3 className="title-font text-lg font-bold">
                     ⚽ 结算投注单 (Settle Bet)
                   </h3>
-                  <button className="text-slate-500 hover:text-white" onClick={() => setSettleModalOpen(false)}>
-                    <X size={20} />
-                  </button>
                 </div>
                 <form onSubmit={handleSettleBet} className="space-y-4">
                   <div className="bg-slate-900 p-3 rounded text-xs text-slate-300 space-y-1">
