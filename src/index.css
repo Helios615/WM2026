@@ -599,3 +599,74 @@ body {
 .z-50 {
   z-index: 50;
 }
+
+/* ==================== RESPONSIVE MOBILE OVERRIDES ==================== */
+@media (max-width: 768px) {
+  /* Prevent tables from squishing and breaking layouts on small screens */
+  .custom-table {
+    min-width: 700px;
+  }
+
+  /* Make sure table container shows a neat indicator for scrolling */
+  .table-container {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@media (max-width: 640px) {
+  /* Compact panel spacing on mobile devices */
+  .glass-panel {
+    padding: 16px;
+  }
+
+  /* Header center alignment on mobile */
+  header {
+    flex-direction: column !important;
+    align-items: center !important;
+    text-align: center !important;
+    padding-top: 16px;
+    padding-bottom: 16px;
+  }
+  
+  header h1 {
+    text-align: center !important;
+    justify-content: center !important;
+  }
+  
+  header p {
+    text-align: center !important;
+  }
+
+  header .flex {
+    justify-content: center !important;
+    width: 100%;
+  }
+
+  /* Tab Container horizontal scroll layout */
+  .tab-container {
+    width: 100% !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; /* Firefox */
+  }
+  .tab-container::-webkit-scrollbar {
+    display: none; /* Chrome/Safari/Webkit */
+  }
+
+  /* Compact WeChat sharing card */
+  .wechat-bill-card {
+    padding: 20px;
+    margin: 0 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Stack grid form columns vertically on narrow mobile phones */
+  .form-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+}
+
