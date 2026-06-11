@@ -1956,7 +1956,7 @@ export default function App() {
                   onChange={e => setFundNotes(e.target.value)}
                 />
               </div>
-              <div className="flex gap-2 justify-end pt-2">
+              <div className="flex gap-5 justify-end pt-2">
                 <button type="button" className="btn btn-secondary" onClick={() => setFundModalOpen(false)}>
                   取消
                 </button>
@@ -2051,7 +2051,7 @@ export default function App() {
                     </span>
                   </div>
 
-                  <div className="flex gap-2 justify-end pt-2">
+                  <div className="flex gap-5 justify-end pt-2">
                     <button type="button" className="btn btn-secondary" onClick={() => setSettleModalOpen(false)}>
                       取消
                     </button>
