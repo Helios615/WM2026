@@ -13,7 +13,8 @@ import {
   Share2, 
   Copy, 
   UserPlus, 
-  AlertCircle
+  AlertCircle,
+  Settings
 } from 'lucide-react';
 import type { Member, Bet, Transaction, MemberSummary, BetStatus } from './types';
 import { WORLD_CUP_TEAMS, PLAY_TYPES } from './constants';
@@ -165,6 +166,9 @@ export default function App() {
   // WeChat bill modal
   const [billModalOpen, setBillModalOpen] = useState(false);
   const [billMemberId, setBillMemberId] = useState<string | null>(null);
+  
+  // Settings modal
+  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   
   // Filters
   const [betFilterStatus, setBetFilterStatus] = useState<string>('all');
@@ -1171,17 +1175,12 @@ export default function App() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button className="btn btn-secondary text-xs" onClick={handleBackup}>
-            <Download size={14} /> 备份数据
-          </button>
-          <button className="btn btn-secondary text-xs" onClick={handleImportClick}>
-            <Upload size={14} /> 恢复数据
-          </button>
-          <button className="btn btn-secondary text-xs hover:text-emerald-400" onClick={handleLoadMockData}>
-            <RefreshCw size={14} /> 载入演示数据
-          </button>
-          <button className="btn btn-danger text-xs" onClick={handleResetData}>
-            <Trash2 size={14} /> 清空数据
+          <button 
+            className="btn btn-secondary text-xs font-bold flex items-center gap-2 border border-slate-700/80 hover:border-[var(--primary)] hover:text-[var(--primary)] transition-all duration-300"
+            onClick={() => setSettingsModalOpen(true)}
+          >
+            <Settings size={14} />
+            系统配置与云同步
           </button>
           <input 
             type="file" 
@@ -1296,138 +1295,6 @@ export default function App() {
                     确认添加成员
                   </button>
                 </form>
-              </div>
-
-              {/* Panel 2: Cloud Database Config */}
-              <div className="glass-panel border border-slate-800">
-                <h3 className="title-font text-base font-bold mb-2 flex items-center gap-2 text-[var(--primary)]">
-                  ⚙️ 云数据库配置 (Supabase)
-                </h3>
-                <p className="text-[10px] text-[var(--text-muted)] mb-4 leading-relaxed text-left">
-                  配置 Supabase 后，所有人通过同一个网址就能实现实时共享记账。
-                </p>
-                
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center bg-slate-900 p-2 rounded text-xs border border-slate-800">
-                    <span>当前数据模式:</span>
-                    <span className={`font-bold ${dbMode === 'supabase' ? (dbConnected ? 'text-profit animate-pulse' : 'text-danger') : 'text-slate-400'}`}>
-                      {dbMode === 'supabase' ? (dbConnected ? '🟢 云端已连接' : '🔴 连接云端失败') : '⚪ 本地离线单机'}
-                    </span>
-                  </div>
-                  
-                  {dbMode === 'supabase' && (
-                    <button 
-                      type="button" 
-                      className="btn btn-secondary w-full py-1.5 text-[11px] flex justify-center items-center gap-2"
-                      onClick={handleRefreshCloud}
-                      disabled={syncing}
-                    >
-                      <RefreshCw size={11} className={syncing ? 'animate-spin' : ''} /> 
-                      {syncing ? '同步中...' : '同步/刷新云端数据'}
-                    </button>
-                  )}
-                  
-                  <div className="form-group text-xs m-0 text-left">
-                    <label className="form-label text-[10px] mb-1">Supabase API URL</label>
-                    <input 
-                      type="text" 
-                      placeholder="https://xxx.supabase.co"
-                      className="form-input text-xs py-1.5"
-                      value={supabaseUrl}
-                      onChange={e => setSupabaseUrl(e.target.value)}
-                    />
-                  </div>
-                  
-                  <div className="form-group text-xs m-0 text-left">
-                    <label className="form-label text-[10px] mb-1">Supabase Anon Key</label>
-                    <input 
-                      type="password" 
-                      placeholder="输入以 eyJhbGci 开头的密钥"
-                      className="form-input text-xs py-1.5"
-                      value={supabaseKey}
-                      onChange={e => setSupabaseKey(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="flex gap-2 pt-2">
-                    {dbMode === 'local' ? (
-                      <button 
-                        type="button" 
-                        className="btn btn-primary w-full text-xs py-2"
-                        onClick={() => handleToggleDbMode('supabase')}
-                        disabled={syncing}
-                      >
-                        开启云同步
-                      </button>
-                    ) : (
-                      <button 
-                        type="button" 
-                        className="btn btn-danger w-full text-xs py-2"
-                        onClick={() => handleToggleDbMode('local')}
-                        disabled={syncing}
-                      >
-                        关闭云同步
-                      </button>
-                    )}
-                  </div>
-                  
-                  {dbMode === 'supabase' && (
-                    <button
-                      type="button"
-                      className="btn btn-secondary w-full text-xs py-1.5 hover:text-[var(--primary)]"
-                      onClick={uploadLocalDataToCloud}
-                      disabled={syncing}
-                    >
-                      🔼 上传本地数据到云端
-                    </button>
-                  )}
-
-                  {/* SQL scripts download / preview */}
-                  <div className="border-t border-slate-800/80 pt-3 mt-3">
-                    <details className="text-[10px] text-slate-500 cursor-pointer text-left">
-                      <summary className="hover:text-slate-300 font-bold">🛠️ 数据库初始化 SQL 脚本</summary>
-                      <pre className="mt-2 p-2 bg-slate-950 rounded text-[9px] text-slate-400 overflow-x-auto select-all leading-normal whitespace-pre text-left">
-{`create table if not exists wc_members (
-  id text primary key,
-  name text not null,
-  phone text,
-  notes text,
-  created_at bigint not null
-);
-
-create table if not exists wc_bets (
-  id text primary key,
-  member_id text not null references wc_members(id) on delete cascade,
-  member_name text not null,
-  match_name text not null,
-  play_type text not null,
-  odds numeric not null,
-  stake numeric not null,
-  status text not null,
-  payout numeric not null,
-  created_at bigint not null,
-  settled_at bigint,
-  notes text
-);
-
-create table if not exists wc_transactions (
-  id text primary key,
-  member_id text not null references wc_members(id) on delete cascade,
-  member_name text not null,
-  type text not null,
-  amount numeric not null,
-  related_id text,
-  description text not null,
-  created_at bigint not null
-);
-
-alter table wc_members disable row level security;
-alter table wc_bets disable row level security;
-alter table wc_transactions disable row level security;`}
-                      </pre>
-                    </details>
-                  </div>
-                </div>
               </div>
             </aside>
 
@@ -2202,6 +2069,181 @@ alter table wc_transactions disable row level security;`}
               </div>
             );
           })()}
+        </div>
+      )}
+
+      {/* ==================== MODAL 4: SYSTEM SETTINGS & CLOUD SYNC ==================== */}
+      {settingsModalOpen && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in" onClick={() => setSettingsModalOpen(false)}>
+          <div className="glass-panel w-full max-w-lg bg-[var(--bg-card-solid)] border-[var(--primary)] border-t-4 p-6 shadow-2xl relative overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="title-font text-xl font-bold flex items-center gap-2 text-[var(--primary)] m-0">
+                ⚙️ 系统管理与云端同步
+              </h3>
+              <button className="text-slate-500 hover:text-white transition" onClick={() => setSettingsModalOpen(false)}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              {/* Part 1: Supabase Configuration */}
+              <div className="bg-[#0e1626] p-4 rounded-xl border border-slate-800 space-y-4">
+                <h4 className="text-sm font-bold text-slate-200 border-b border-slate-800 pb-2 flex items-center gap-1.5">
+                  ☁️ Supabase 数据库同步
+                </h4>
+                
+                <div className="flex justify-between items-center bg-slate-950 p-2.5 rounded-lg text-xs border border-slate-900">
+                  <span className="text-slate-400">当前运行模式:</span>
+                  <span className={`font-bold px-2 py-0.5 rounded text-[11px] ${
+                    dbMode === 'supabase' 
+                      ? (dbConnected ? 'bg-emerald-950/80 text-profit' : 'bg-red-950/80 text-danger') 
+                      : 'bg-slate-900 text-slate-400'
+                  }`}>
+                    {dbMode === 'supabase' ? (dbConnected ? '🟢 已连通云端' : '🔴 连接云端失败') : '⚪ 本地离线模式'}
+                  </span>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="form-group text-xs m-0 text-left">
+                    <label className="form-label text-[10px] text-slate-400 mb-1">Supabase API URL</label>
+                    <input 
+                      type="text" 
+                      placeholder="https://your-project.supabase.co"
+                      className="form-input text-xs py-2 bg-slate-950"
+                      value={supabaseUrl}
+                      onChange={e => setSupabaseUrl(e.target.value)}
+                    />
+                  </div>
+                  
+                  <div className="form-group text-xs m-0 text-left">
+                    <label className="form-label text-[10px] text-slate-400 mb-1">Supabase Anon Key</label>
+                    <input 
+                      type="password" 
+                      placeholder="输入以 eyJhbGci 开头的密钥"
+                      className="form-input text-xs py-2 bg-slate-950"
+                      value={supabaseKey}
+                      onChange={e => setSupabaseKey(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 pt-1.5">
+                    {dbMode === 'local' ? (
+                      <button 
+                        type="button" 
+                        className="btn btn-primary text-xs py-2 h-[36px]"
+                        onClick={() => handleToggleDbMode('supabase')}
+                        disabled={syncing}
+                      >
+                        开启云同步
+                      </button>
+                    ) : (
+                      <button 
+                        type="button" 
+                        className="btn btn-danger text-xs py-2 h-[36px]"
+                        onClick={() => handleToggleDbMode('local')}
+                        disabled={syncing}
+                      >
+                        关闭云同步
+                      </button>
+                    )}
+
+                    <button 
+                      type="button" 
+                      className="btn btn-secondary text-xs py-2 h-[36px] flex justify-center items-center gap-1.5"
+                      onClick={handleRefreshCloud}
+                      disabled={syncing || dbMode !== 'supabase'}
+                    >
+                      <RefreshCw size={12} className={syncing ? 'animate-spin' : ''} /> 
+                      刷新数据
+                    </button>
+                  </div>
+
+                  {dbMode === 'supabase' && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary w-full text-xs py-2 h-[36px] hover:text-[var(--primary)] border border-dashed border-slate-700 mt-2"
+                      onClick={uploadLocalDataToCloud}
+                      disabled={syncing}
+                    >
+                      🔼 上传本地数据覆盖到云端
+                    </button>
+                  )}
+                </div>
+
+                <div className="border-t border-slate-900 pt-2.5">
+                  <details className="text-[10px] text-slate-500 cursor-pointer">
+                    <summary className="hover:text-slate-300 font-bold select-none">🛠️ 查看建表 SQL 脚本</summary>
+                    <pre className="mt-2 p-2 bg-slate-950 rounded text-[9px] text-slate-400 overflow-x-auto select-all leading-normal whitespace-pre text-left max-h-[140px]">
+{`create table if not exists wc_members (
+  id text primary key,
+  name text not null,
+  phone text,
+  notes text,
+  created_at bigint not null
+);
+
+create table if not exists wc_bets (
+  id text primary key,
+  member_id text not null references wc_members(id) on delete cascade,
+  member_name text not null,
+  match_name text not null,
+  play_type text not null,
+  odds numeric not null,
+  stake numeric not null,
+  status text not null,
+  payout numeric not null,
+  created_at bigint not null,
+  settled_at bigint,
+  notes text
+);
+
+create table if not exists wc_transactions (
+  id text primary key,
+  member_id text not null references wc_members(id) on delete cascade,
+  member_name text not null,
+  type text not null,
+  amount numeric not null,
+  related_id text,
+  description text not null,
+  created_at bigint not null
+);
+
+alter table wc_members disable row level security;
+alter table wc_bets disable row level security;
+alter table wc_transactions disable row level security;`}
+                    </pre>
+                  </details>
+                </div>
+              </div>
+
+              {/* Part 2: Local Data Actions */}
+              <div className="bg-[#0e1626] p-4 rounded-xl border border-slate-800 space-y-4">
+                <h4 className="text-sm font-bold text-slate-200 border-b border-slate-800 pb-2">
+                  💾 数据备份与维护
+                </h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <button className="btn btn-secondary text-xs h-[38px] flex items-center justify-center gap-1.5" onClick={() => { handleBackup(); setSettingsModalOpen(false); }}>
+                    <Download size={13} /> 备份导出 (.json)
+                  </button>
+                  <button className="btn btn-secondary text-xs h-[38px] flex items-center justify-center gap-1.5" onClick={() => { handleImportClick(); setSettingsModalOpen(false); }}>
+                    <Upload size={13} /> 恢复导入 (.json)
+                  </button>
+                  <button className="btn btn-secondary text-xs h-[38px] flex items-center justify-center gap-1.5 hover:text-emerald-400" onClick={() => { handleLoadMockData(); setSettingsModalOpen(false); }}>
+                    <RefreshCw size={13} /> 载入演示数据
+                  </button>
+                  <button className="btn btn-danger text-xs h-[38px] flex items-center justify-center gap-1.5" onClick={() => { handleResetData(); setSettingsModalOpen(false); }}>
+                    <Trash2 size={13} /> 清空所有数据
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            <div className="mt-6 flex justify-end">
+              <button className="btn btn-secondary text-xs py-2 px-5" onClick={() => setSettingsModalOpen(false)}>
+                关闭
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
