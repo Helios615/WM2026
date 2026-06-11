@@ -6,7 +6,6 @@ import {
   Upload, 
   RefreshCw, 
   Search, 
-  X, 
   DollarSign, 
   Users, 
   FileText, 
@@ -182,7 +181,6 @@ export default function App() {
 
 
   const [syncing, setSyncing] = useState(false);
-  const [syncError, setSyncError] = useState<string | null>(null);
 
   // --- Supabase Cloud Database Integration ---
   const [supabaseUrl, setSupabaseUrl] = useState(() => {
@@ -285,7 +283,6 @@ export default function App() {
     } catch (err: any) {
       console.error('Fetch Supabase error:', err);
       setDbConnected(false);
-      setSyncError('从云端数据库同步失败: ' + (err.message || '未知错误'));
       return false;
     }
   };
