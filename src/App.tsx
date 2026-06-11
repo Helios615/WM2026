@@ -1258,12 +1258,13 @@ export default function App() {
                         {memberSummaries.map(ms => (
                           <tr 
                             key={ms.member.id}
-                            className={`cursor-pointer ${selectedMemberId === ms.member.id ? 'bg-[rgba(212,175,55,0.05)] border-l-2 border-l-[var(--primary)]' : ''}`}
-                            onClick={() => setSelectedMemberId(ms.member.id)}
+                            className={selectedMemberId === ms.member.id ? 'bg-[rgba(212,175,55,0.05)] border-l-2 border-l-[var(--primary)]' : ''}
                           >
-                            <td className="text-bold flex items-center gap-1">
-                              {ms.member.name}
-                              {ms.member.phone && <span className="text-[10px] text-slate-500">({ms.member.phone})</span>}
+                            <td className="text-bold">
+                              <div className="flex items-center gap-1.5">
+                                {ms.member.name}
+                                {ms.member.phone && <span className="text-[10px] text-slate-500">({ms.member.phone})</span>}
+                              </div>
                             </td>
                             <td>￥{ms.totalDeposit.toFixed(2)}</td>
                             <td>￥{ms.activeBets.toFixed(2)}</td>
@@ -1271,8 +1272,15 @@ export default function App() {
                               {ms.netProfit > 0 ? '+' : ''}￥{ms.netProfit.toFixed(2)}
                             </td>
                             <td className="text-bold text-profit">￥{ms.currentBalance.toFixed(2)}</td>
-                            <td className="text-right" onClick={e => e.stopPropagation()}>
+                            <td className="text-right">
                               <div className="flex justify-end gap-1">
+                                <button 
+                                  className={`btn btn-icon-only text-xs ${selectedMemberId === ms.member.id ? 'btn-primary' : 'btn-secondary'}`}
+                                  title={selectedMemberId === ms.member.id ? '收起个人账簿' : '查看个人账簿'}
+                                  onClick={() => setSelectedMemberId(selectedMemberId === ms.member.id ? null : ms.member.id)}
+                                >
+                                  {selectedMemberId === ms.member.id ? '收起' : '账本'}
+                                </button>
                                 <button 
                                   className="btn btn-secondary btn-icon-only text-xs"
                                   title="账目变动 (充/提)"
