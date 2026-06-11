@@ -2080,9 +2080,6 @@ export default function App() {
               <h3 className="title-font text-xl font-bold flex items-center gap-2 text-[var(--primary)] m-0">
                 ⚙️ 系统管理与云端同步
               </h3>
-              <button className="text-slate-500 hover:text-white transition" onClick={() => setSettingsModalOpen(false)}>
-                <X size={20} />
-              </button>
             </div>
 
             <div className="space-y-6">
