@@ -1125,7 +1125,7 @@ export default function App() {
       <header className="py-6 border-b border-[var(--border-color)] flex flex-wrap justify-between items-center gap-4">
         <div>
           <h1 className="title-font font-extrabold text-2xl md:text-3xl flex items-center gap-2 m-0 text-[var(--primary)] text-left">
-            🏆 2026 世界杯投注账本 <span className="text-[12px] bg-slate-800 text-slate-300 px-2 py-1 rounded font-normal">代投单人版</span>
+            🏆 2026 世界杯投注账本
           </h1>
           <p className="text-[var(--text-muted)] text-sm text-left mt-1">
             为发起人提供清晰的一人代投多友账单，支持微信一键分享对账与 Excel 导出。
