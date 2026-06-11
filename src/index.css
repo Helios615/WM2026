@@ -520,8 +520,26 @@ body {
 .flex {
   display: flex;
 }
+.flex-col {
+  flex-direction: column;
+}
+.flex-wrap {
+  flex-wrap: wrap;
+}
+.flex-grow {
+  flex-grow: 1;
+}
+.flex-shrink-0 {
+  flex-shrink: 0;
+}
+.gap-1 {
+  gap: 4px;
+}
 .gap-2 {
   gap: 8px;
+}
+.gap-3 {
+  gap: 12px;
 }
 .gap-4 {
   gap: 16px;
@@ -529,8 +547,20 @@ body {
 .gap-5 {
   gap: 20px;
 }
+.justify-start {
+  justify-content: flex-start;
+}
+.justify-center {
+  justify-content: center;
+}
+.justify-between {
+  justify-content: space-between;
+}
 .justify-end {
   justify-content: flex-end;
+}
+.items-center {
+  align-items: center;
 }
 .pt-2 {
   padding-top: 8px;
@@ -562,12 +592,6 @@ body {
 .backdrop-blur-md {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-}
-.items-center {
-  align-items: center;
-}
-.justify-center {
-  justify-content: center;
 }
 .p-4 {
   padding: 16px;
