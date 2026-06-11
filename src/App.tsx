@@ -143,6 +143,12 @@ export default function App() {
   const [betOdds, setBetOdds] = useState('');
   const [betStake, setBetStake] = useState('');
   const [betNotes, setBetNotes] = useState('');
+
+  // Real-time Bet Calculator values
+  const calcOdds = parseFloat(betOdds) || 0;
+  const calcStake = parseFloat(betStake) || 0;
+  const expectedPayout = calcOdds * calcStake;
+  const netProfit = calcStake * (calcOdds - 1);
   
   // Auto suggestion for teams
   const [homeTeamQuery, setHomeTeamQuery] = useState('');
@@ -2066,6 +2072,29 @@ alter table wc_transactions disable row level security;`}
                     </div>
                   </div>
                 </div>
+
+                {/* 实时收益计算器预览 */}
+                {(calcOdds > 0 && calcStake > 0) && (
+                  <div className="md:col-span-2 bg-[#0e1626]/80 border border-slate-800/60 rounded-lg p-3 space-y-1.5 backdrop-blur-sm">
+                    <div className="text-[11px] text-[var(--text-muted)] font-medium tracking-wide uppercase flex items-center gap-1.5">
+                      <span>📊 预期收益计算器</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 pt-0.5">
+                      <div className="bg-[#1e293b]/40 p-2.5 rounded border border-slate-800/40">
+                        <div className="text-[10px] text-[var(--text-muted)]">预计返还 (本利)</div>
+                        <div className="text-sm font-bold text-[var(--primary)] mt-0.5">
+                          ￥{expectedPayout.toFixed(2)}
+                        </div>
+                      </div>
+                      <div className="bg-[#1e293b]/40 p-2.5 rounded border border-slate-800/40">
+                        <div className="text-[10px] text-[var(--text-muted)]">预计净利润</div>
+                        <div className="text-sm font-bold text-[var(--success)] mt-0.5">
+                          +￥{netProfit.toFixed(2)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Line 3 */}
                 <div className="form-group md:col-span-2 m-0">
