@@ -161,6 +161,9 @@ export default function App() {
   const [settleBetId, setSettleBetId] = useState<string | null>(null);
   const [settleStatus, setSettleStatus] = useState<BetStatus>('win');
   const [settlePayout, setSettlePayout] = useState('');
+  const [useCompensation, setUseCompensation] = useState(false);
+  const [compensationRate, setCompensationRate] = useState('8.0');
+  const [compensationCoef, setCompensationCoef] = useState('');
   
   // WeChat bill modal
   const [billModalOpen, setBillModalOpen] = useState(false);
@@ -721,12 +724,57 @@ export default function App() {
     alert('注单录入成功！');
   };
 
+  // Recalculate compensated payout
+  const recalculatePayout = (
+    status: BetStatus,
+    useComp: boolean,
+    coefStr: string,
+    rateStr: string,
+    currentBetId: string | null = settleBetId
+  ) => {
+    const bet = bets.find(b => b.id === currentBetId);
+    if (!bet) return;
+
+    let basePayout = 0;
+    if (status === 'win') {
+      basePayout = bet.stake * bet.odds;
+    } else if (status === 'half-win') {
+      basePayout = bet.stake + bet.stake * (bet.odds - 1) / 2;
+    } else if (status === 'loss') {
+      basePayout = 0;
+    } else if (status === 'half-loss') {
+      basePayout = bet.stake / 2;
+    } else if (status === 'void') {
+      basePayout = bet.stake;
+    }
+
+    if (useComp && (status === 'win' || status === 'half-win')) {
+      const coef = parseFloat(coefStr);
+      const rate = parseFloat(rateStr);
+      if (!isNaN(coef) && !isNaN(rate)) {
+        let deduction = 0;
+        if (status === 'win') {
+          deduction = coef * bet.odds * rate;
+        } else if (status === 'half-win') {
+          deduction = coef * ((bet.odds + 1) / 2) * rate;
+        }
+        basePayout = Math.max(0, basePayout - deduction);
+      }
+    }
+    setSettlePayout(basePayout.toFixed(2));
+  };
+
   // Open Settle Modal
   const openSettleModal = (bet: Bet) => {
     setSettleBetId(bet.id);
-    setSettleStatus('win');
+    const initialStatus = bet.status === 'pending' ? 'win' : bet.status;
+    setSettleStatus(initialStatus);
     
-    // Auto calculate default payouts
+    // Default compensation setup
+    setUseCompensation(false);
+    setCompensationRate('8.0');
+    setCompensationCoef(((bet.stake / 100) * 0.35).toFixed(2));
+    
     if (bet.status === 'pending') {
       setSettlePayout((bet.stake * bet.odds).toFixed(2));
     } else {
@@ -738,23 +786,7 @@ export default function App() {
   // Update payout estimation when status changes in settle modal
   const handleSettleStatusChange = (status: BetStatus) => {
     setSettleStatus(status);
-    const bet = bets.find(b => b.id === settleBetId);
-    if (!bet) return;
-
-    if (status === 'win') {
-      setSettlePayout((bet.stake * bet.odds).toFixed(2));
-    } else if (status === 'half-win') {
-      // Half win usually: stake + stake * (odds - 1) / 2
-      const halfWinPayout = bet.stake + bet.stake * (bet.odds - 1) / 2;
-      setSettlePayout(halfWinPayout.toFixed(2));
-    } else if (status === 'loss') {
-      setSettlePayout('0');
-    } else if (status === 'half-loss') {
-      // Half loss: stake / 2
-      setSettlePayout((bet.stake / 2).toFixed(2));
-    } else if (status === 'void') {
-      setSettlePayout(bet.stake.toString());
-    }
+    recalculatePayout(status, useCompensation, compensationCoef, compensationRate);
   };
 
   // Settle Bet
@@ -1986,6 +2018,89 @@ export default function App() {
                       {settleStatus === 'half-loss' && `半输返回一半本金: ￥${(bet.stake / 2).toFixed(2)}`}
                       {settleStatus === 'void' && `走水退回原投注本金: ￥${bet.stake}`}
                     </span>
+
+                    {(settleStatus === 'win' || settleStatus === 'half-win') && (
+                      <div className="border border-slate-700/50 rounded-lg p-3 bg-slate-900/60 mt-3 space-y-3">
+                        <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-300">
+                          <input 
+                            type="checkbox" 
+                            className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-[var(--primary)] focus:ring-0 focus:ring-offset-0"
+                            checked={useCompensation}
+                            onChange={e => {
+                              const checked = e.target.checked;
+                              setUseCompensation(checked);
+                              recalculatePayout(settleStatus, checked, compensationCoef, compensationRate);
+                            }}
+                          />
+                          <span>启用代投汇率补偿 (扣减少下本金奖金)</span>
+                        </label>
+
+                        {useCompensation && (
+                          <div className="space-y-2 pt-2 border-t border-slate-800">
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="text-[11px] font-bold text-slate-400 block mb-1">少下本金系数 (EUR)</label>
+                                <input 
+                                  type="number" 
+                                  step="0.01"
+                                  placeholder="少投欧元"
+                                  className="form-input text-xs py-1.5 px-2.5"
+                                  value={compensationCoef}
+                                  onChange={e => {
+                                    const val = e.target.value;
+                                    setCompensationCoef(val);
+                                    recalculatePayout(settleStatus, useCompensation, val, compensationRate);
+                                  }}
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[11px] font-bold text-slate-400 block mb-1">约定汇率 (CNY/EUR)</label>
+                                <input 
+                                  type="number" 
+                                  step="0.01"
+                                  placeholder="例如 8.0"
+                                  className="form-input text-xs py-1.5 px-2.5"
+                                  value={compensationRate}
+                                  onChange={e => {
+                                    const val = e.target.value;
+                                    setCompensationRate(val);
+                                    recalculatePayout(settleStatus, useCompensation, compensationCoef, val);
+                                  }}
+                                />
+                              </div>
+                            </div>
+                            
+                            {(() => {
+                              const coef = parseFloat(compensationCoef) || 0;
+                              const rate = parseFloat(compensationRate) || 0;
+                              const odds = bet.odds;
+                              let deduction = 0;
+                              let formula = "";
+                              if (settleStatus === 'win') {
+                                deduction = coef * odds * rate;
+                                formula = `${coef} 欧 × ${odds} 赔率 × ${rate} 汇率`;
+                              } else if (settleStatus === 'half-win') {
+                                deduction = coef * ((odds + 1) / 2) * rate;
+                                formula = `${coef} 欧 × ((${odds} + 1)/2) 赔率 × ${rate} 汇率`;
+                              }
+
+                              return (
+                                <div className="text-[11px] text-slate-400 leading-relaxed bg-slate-950/40 p-2 rounded mt-2">
+                                  <div className="flex justify-between">
+                                    <span>计算公式:</span>
+                                    <span className="font-mono text-slate-300">{formula}</span>
+                                  </div>
+                                  <div className="flex justify-between mt-1 pt-1 border-t border-slate-800/80">
+                                    <span>扣减金额:</span>
+                                    <span className="text-red-400 font-bold">￥{deduction.toFixed(2)}</span>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex gap-5 justify-end pt-2">
