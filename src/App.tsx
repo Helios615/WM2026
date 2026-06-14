@@ -1435,7 +1435,7 @@ export default function App() {
                             </tr>
                           </thead>
                           <tbody>
-                            {bets.filter(b => b.memberId === selectedMemberId).slice(0, 5).map(b => {
+                            {bets.filter(b => b.memberId === selectedMemberId).map(b => {
                               const profit = b.payout - b.stake;
                               return (
                                 <tr key={b.id}>
