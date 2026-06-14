@@ -1918,6 +1918,26 @@ export default function App() {
               </h3>
             </div>
             <form onSubmit={handleFundOperation} className="space-y-4">
+              <div className="form-group">
+                <label className="form-label">资金操作类型</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button 
+                    type="button" 
+                    className={`btn py-2 text-xs font-bold transition-all duration-200 ${fundOpType === 'deposit' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setFundOpType('deposit')}
+                  >
+                    💰 存入充值 (Deposit)
+                  </button>
+                  <button 
+                    type="button" 
+                    className={`btn py-2 text-xs font-bold transition-all duration-200 ${fundOpType === 'withdraw' ? 'bg-red-950/40 text-red-400 border border-red-500/30' : 'btn-secondary'}`}
+                    onClick={() => setFundOpType('withdraw')}
+                  >
+                    💸 提取返还 (Withdraw)
+                  </button>
+                </div>
+              </div>
+
               <div className="bg-slate-900 p-3 rounded border border-slate-800 text-sm">
                 当前可用余额: <span className="text-profit text-bold">￥{selectedMemberSummary.currentBalance.toFixed(2)}</span>
               </div>
