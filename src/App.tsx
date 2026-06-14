@@ -770,16 +770,15 @@ export default function App() {
     const initialStatus = bet.status === 'pending' ? 'win' : bet.status;
     setSettleStatus(initialStatus);
     
-    // Default compensation setup
-    setUseCompensation(false);
+    // Default compensation setup (Force enabled)
+    setUseCompensation(true);
     setCompensationRate('8.0');
-    setCompensationCoef(((bet.stake / 100) * 0.35).toFixed(2));
+    const coef = ((bet.stake / 100) * 0.35).toFixed(2);
+    setCompensationCoef(coef);
     
-    if (bet.status === 'pending') {
-      setSettlePayout((bet.stake * bet.odds).toFixed(2));
-    } else {
-      setSettlePayout(bet.payout.toString());
-    }
+    // Apply compensation immediately on open
+    recalculatePayout(initialStatus, true, coef, '8.0', bet.id);
+    
     setSettleModalOpen(true);
   };
 
@@ -805,11 +804,30 @@ export default function App() {
     // Check if already settled, we need to remove previous payout transaction
     const filteredTxs = transactions.filter(t => !(t.relatedId === bet.id && (t.type === 'bet_payout' || t.type === 'bet_refund')));
 
+    const coef = parseFloat(compensationCoef);
+    const rate = parseFloat(compensationRate);
+    let deduction = 0;
+    let compInfo = "";
+    if (useCompensation && (settleStatus === 'win' || settleStatus === 'half-win') && !isNaN(coef) && !isNaN(rate)) {
+      if (settleStatus === 'win') {
+        deduction = coef * bet.odds * rate;
+        compInfo = `(代投汇率补偿: 扣除 ${coef}欧×${bet.odds}×${rate} = ￥${deduction.toFixed(2)})`;
+      } else if (settleStatus === 'half-win') {
+        deduction = coef * ((bet.odds + 1) / 2) * rate;
+        compInfo = `(代投汇率补偿: 扣除 ${coef}欧×((${bet.odds}+1)/2)×${rate} = ￥${deduction.toFixed(2)})`;
+      }
+    }
+
+    // Clean previous compensation info from notes if we are re-settling
+    const cleanNotes = bet.notes ? bet.notes.replace(/\(代投汇率补偿:.*?\)/g, '').trim() : '';
+    const updatedNotes = compInfo ? `${cleanNotes} ${compInfo}`.trim() : cleanNotes;
+
     const updatedBet: Bet = {
       ...bet,
       status: settleStatus,
       payout,
-      settledAt: Date.now()
+      settledAt: Date.now(),
+      notes: updatedNotes
     };
 
     const payoutTxId = generateId();
@@ -823,7 +841,7 @@ export default function App() {
       relatedId: bet.id,
       description: isVoid 
         ? `退款【${bet.matchName}】 (走水退本金 ${payout})` 
-        : `派奖【${bet.matchName}】: ${bet.playType} (赔率 ${bet.odds}, 本金 ${bet.stake}, 返奖 ${payout})`,
+        : `派奖【${bet.matchName}】: ${bet.playType} (赔率 ${bet.odds}, 本金 ${bet.stake}, 返奖 ${payout})${compInfo ? ' ' + compInfo : ''}`,
       createdAt: Date.now()
     } : null;
 
@@ -835,7 +853,8 @@ export default function App() {
           const { error: err1 } = await client.from('wc_bets').update({
             status: updatedBet.status,
             payout: updatedBet.payout,
-            settled_at: updatedBet.settledAt
+            settled_at: updatedBet.settledAt,
+            notes: updatedBet.notes
           }).eq('id', settleBetId);
           if (err1) throw err1;
 
@@ -2021,18 +2040,14 @@ export default function App() {
 
                     {(settleStatus === 'win' || settleStatus === 'half-win') && (
                       <div className="border border-slate-700/50 rounded-lg p-3 bg-slate-900/60 mt-3 space-y-3">
-                        <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-300">
+                        <label className="flex items-center gap-2 cursor-not-allowed text-xs font-semibold text-slate-300">
                           <input 
                             type="checkbox" 
-                            className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-[var(--primary)] focus:ring-0 focus:ring-offset-0"
-                            checked={useCompensation}
-                            onChange={e => {
-                              const checked = e.target.checked;
-                              setUseCompensation(checked);
-                              recalculatePayout(settleStatus, checked, compensationCoef, compensationRate);
-                            }}
+                            className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-[var(--primary)] opacity-70 focus:ring-0 focus:ring-offset-0 cursor-not-allowed"
+                            checked={true}
+                            disabled
                           />
-                          <span>启用代投汇率补偿 (扣减少下本金奖金)</span>
+                          <span>代投汇率补偿已启用 (扣减少下本金奖金)</span>
                         </label>
 
                         {useCompensation && (
@@ -2042,30 +2057,18 @@ export default function App() {
                                 <label className="text-[11px] font-bold text-slate-400 block mb-1">少下本金系数 (EUR)</label>
                                 <input 
                                   type="number" 
-                                  step="0.01"
-                                  placeholder="少投欧元"
-                                  className="form-input text-xs py-1.5 px-2.5"
+                                  readOnly
+                                  className="form-input text-xs py-1.5 px-2.5 bg-slate-950/50 cursor-not-allowed opacity-80"
                                   value={compensationCoef}
-                                  onChange={e => {
-                                    const val = e.target.value;
-                                    setCompensationCoef(val);
-                                    recalculatePayout(settleStatus, useCompensation, val, compensationRate);
-                                  }}
                                 />
                               </div>
                               <div>
                                 <label className="text-[11px] font-bold text-slate-400 block mb-1">约定汇率 (CNY/EUR)</label>
                                 <input 
                                   type="number" 
-                                  step="0.01"
-                                  placeholder="例如 8.0"
-                                  className="form-input text-xs py-1.5 px-2.5"
+                                  readOnly
+                                  className="form-input text-xs py-1.5 px-2.5 bg-slate-950/50 cursor-not-allowed opacity-80"
                                   value={compensationRate}
-                                  onChange={e => {
-                                    const val = e.target.value;
-                                    setCompensationRate(val);
-                                    recalculatePayout(settleStatus, useCompensation, compensationCoef, val);
-                                  }}
                                 />
                               </div>
                             </div>
