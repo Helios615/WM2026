@@ -928,6 +928,41 @@ export default function App() {
     setTransactions(transactions.filter(t => t.relatedId !== betId));
   };
 
+  // Delete Manual Transaction (Deposit/Withdraw)
+  const handleDeleteTransaction = async (txId: string) => {
+    const tx = transactions.find(t => t.id === txId);
+    if (!tx) return;
+
+    if (tx.type !== 'deposit' && tx.type !== 'withdraw') {
+      alert('只能删除手动的充值或取款流水！');
+      return;
+    }
+
+    if (!confirm(`确定要删除 ${tx.memberName} 的这笔【${tx.type === 'deposit' ? '充值' : '取款'}】流水吗？\n金额: ￥${Math.abs(tx.amount)}\n这会直接影响该成员的可用余额和各统计项数据。`)) {
+      return;
+    }
+
+    if (dbMode === 'supabase') {
+      const client = getSupabaseClient(supabaseUrl, supabaseKey);
+      if (client) {
+        setSyncing(true);
+        try {
+          const { error } = await client.from('wc_transactions').delete().eq('id', txId);
+          if (error) throw error;
+        } catch (err: any) {
+          console.error(err);
+          alert('云端删除流水失败: ' + err.message);
+          setSyncing(false);
+          return;
+        }
+        setSyncing(false);
+      }
+    }
+
+    setTransactions(transactions.filter(t => t.id !== txId));
+    alert('流水删除成功！');
+  };
+
   // --- CSV Export Helper ---
   const handleExportMembers = () => {
     const headers = ['姓名', '电话', '累计充值', '累计取款', '在途投注', '历史净盈亏', '当前余额', '备注'];
@@ -1861,6 +1896,7 @@ export default function App() {
                       <th>变动类型</th>
                       <th>变动金额</th>
                       <th>流水详情</th>
+                      <th className="text-right">操作</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1892,6 +1928,19 @@ export default function App() {
                             {isPositive ? '+' : ''}￥{t.amount.toFixed(2)}
                           </td>
                           <td className="text-slate-300">{t.description}</td>
+                          <td className="text-right">
+                            {(t.type === 'deposit' || t.type === 'withdraw') ? (
+                              <button 
+                                className="btn btn-danger py-1 px-2 text-xs btn-icon-only"
+                                title="删除该笔手动流水"
+                                onClick={() => handleDeleteTransaction(t.id)}
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            ) : (
+                              <span className="text-[10px] text-slate-500">-</span>
+                            )}
+                          </td>
                         </tr>
                       );
                     })}
