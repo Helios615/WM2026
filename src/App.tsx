@@ -193,6 +193,7 @@ export default function App() {
   const [useCompensation, setUseCompensation] = useState(false);
   const [compensationRate, setCompensationRate] = useState('8.0');
   const [compensationCoef, setCompensationCoef] = useState('');
+  const [isBatchSettle, setIsBatchSettle] = useState(false);
   
   // WeChat bill modal
   const [billModalOpen, setBillModalOpen] = useState(false);
@@ -872,6 +873,7 @@ export default function App() {
   // Open Settle Modal
   const openSettleModal = (bet: Bet) => {
     setSettleBetId(bet.id);
+    setIsBatchSettle(false);
     const initialStatus = bet.status === 'pending' ? 'win' : bet.status;
     setSettleStatus(initialStatus);
     
@@ -906,80 +908,202 @@ export default function App() {
     const bet = bets.find(b => b.id === settleBetId);
     if (!bet) return;
 
-    // Check if already settled, we need to remove previous payout transaction
-    const filteredTxs = transactions.filter(t => !(t.relatedId === bet.id && (t.type === 'bet_payout' || t.type === 'bet_refund')));
+    const isVoid = settleStatus === 'void';
 
-    const coef = parseFloat(compensationCoef);
-    const rate = parseFloat(compensationRate);
-    let deduction = 0;
-    let compInfo = "";
-    if (useCompensation && (settleStatus === 'win' || settleStatus === 'half-win') && !isNaN(coef) && !isNaN(rate)) {
+    // Find other matching pending bets for batch settlement
+    const matchingBets = isBatchSettle
+      ? bets.filter(b => 
+          b.id !== bet.id &&
+          b.status === 'pending' &&
+          b.matchName === bet.matchName &&
+          b.playType === bet.playType &&
+          b.odds === bet.odds
+        )
+      : [];
+
+    // Calculate ratio in case the user manually adjusted the payout of the main bet
+    let mainExpectedPayout = 0;
+    if (settleStatus === 'win') {
+      mainExpectedPayout = bet.stake * bet.odds;
+    } else if (settleStatus === 'half-win') {
+      mainExpectedPayout = bet.stake + bet.stake * (bet.odds - 1) / 2;
+    } else if (settleStatus === 'loss') {
+      mainExpectedPayout = 0;
+    } else if (settleStatus === 'half-loss') {
+      mainExpectedPayout = bet.stake / 2;
+    } else if (settleStatus === 'void') {
+      mainExpectedPayout = bet.stake;
+    }
+
+    if (useCompensation && (settleStatus === 'win' || settleStatus === 'half-win')) {
+      const coef = parseFloat(compensationCoef) || 0;
+      const rate = parseFloat(compensationRate) || 0;
+      let deduction = 0;
       if (settleStatus === 'win') {
         deduction = coef * bet.odds * rate;
-        compInfo = `(代投汇率补偿: 扣除 ${coef}欧×${bet.odds}×${rate} = ￥${deduction.toFixed(2)})`;
       } else if (settleStatus === 'half-win') {
         deduction = coef * ((bet.odds + 1) / 2) * rate;
-        compInfo = `(代投汇率补偿: 扣除 ${coef}欧×((${bet.odds}+1)/2)×${rate} = ￥${deduction.toFixed(2)})`;
+      }
+      mainExpectedPayout = Math.max(0, mainExpectedPayout - deduction);
+    }
+
+    const ratio = mainExpectedPayout > 0 ? (payout / mainExpectedPayout) : 1.0;
+
+    const allUpdatedBets: Bet[] = [];
+    const allNewTxs: Transaction[] = [];
+
+    // Settle Main Bet
+    const mainCoef = parseFloat(compensationCoef);
+    const mainRate = parseFloat(compensationRate);
+    let mainDeduction = 0;
+    let mainCompInfo = "";
+    if (useCompensation && (settleStatus === 'win' || settleStatus === 'half-win') && !isNaN(mainCoef) && !isNaN(mainRate)) {
+      if (settleStatus === 'win') {
+        mainDeduction = mainCoef * bet.odds * mainRate;
+        mainCompInfo = `(代投汇率补偿: 扣除 ${mainCoef}欧×${bet.odds}×${mainRate} = ￥${mainDeduction.toFixed(2)})`;
+      } else if (settleStatus === 'half-win') {
+        mainDeduction = mainCoef * ((bet.odds + 1) / 2) * mainRate;
+        mainCompInfo = `(代投汇率补偿: 扣除 ${mainCoef}欧×((${bet.odds}+1)/2)×${mainRate} = ￥${mainDeduction.toFixed(2)})`;
       }
     }
 
-    // Clean previous compensation info from notes if we are re-settling
-    const cleanNotes = bet.notes ? bet.notes.replace(/\(代投汇率补偿:.*?\)/g, '').trim() : '';
-    const updatedNotes = compInfo ? `${cleanNotes} ${compInfo}`.trim() : cleanNotes;
+    const mainCleanNotes = bet.notes ? bet.notes.replace(/\(代投汇率补偿:.*?\)/g, '').trim() : '';
+    const mainUpdatedNotes = mainCompInfo ? `${mainCleanNotes} ${mainCompInfo}`.trim() : mainCleanNotes;
 
-    const updatedBet: Bet = {
+    const mainUpdatedBet: Bet = {
       ...bet,
       status: settleStatus,
       payout,
       settledAt: Date.now(),
-      notes: updatedNotes
+      notes: mainUpdatedNotes
     };
+    allUpdatedBets.push(mainUpdatedBet);
 
-    const payoutTxId = generateId();
-    const isVoid = settleStatus === 'void';
-    const newPayoutTx = payout > 0 ? {
-      id: payoutTxId,
-      memberId: bet.memberId,
-      memberName: bet.memberName,
-      type: isVoid ? ('bet_refund' as const) : ('bet_payout' as const),
-      amount: payout,
-      relatedId: bet.id,
-      description: isVoid 
-        ? `退款【${bet.matchName}】 (走水退本金 ${payout})` 
-        : `派奖【${bet.matchName}】: ${bet.playType} (赔率 ${bet.odds}, 本金 ${bet.stake}, 返奖 ${payout})${compInfo ? ' ' + compInfo : ''}`,
-      createdAt: Date.now()
-    } : null;
+    const mainPayoutTxId = generateId();
+    if (payout > 0) {
+      allNewTxs.push({
+        id: mainPayoutTxId,
+        memberId: bet.memberId,
+        memberName: bet.memberName,
+        type: isVoid ? ('bet_refund' as const) : ('bet_payout' as const),
+        amount: payout,
+        relatedId: bet.id,
+        description: isVoid 
+          ? `退款【${bet.matchName}】 (走水退本金 ${payout})` 
+          : `派奖【${bet.matchName}】: ${bet.playType} (赔率 ${bet.odds}, 本金 ${bet.stake}, 返奖 ${payout})${mainCompInfo ? ' ' + mainCompInfo : ''}`,
+        createdAt: Date.now()
+      });
+    }
+
+    // Settle Matching Bets
+    for (const mb of matchingBets) {
+      let mbPayout = 0;
+      if (settleStatus === 'win') {
+        mbPayout = mb.stake * mb.odds;
+      } else if (settleStatus === 'half-win') {
+        mbPayout = mb.stake + mb.stake * (mb.odds - 1) / 2;
+      } else if (settleStatus === 'loss') {
+        mbPayout = 0;
+      } else if (settleStatus === 'half-loss') {
+        mbPayout = mb.stake / 2;
+      } else if (settleStatus === 'void') {
+        mbPayout = mb.stake;
+      }
+
+      let mbCompInfo = "";
+      if (useCompensation && (settleStatus === 'win' || settleStatus === 'half-win')) {
+        const mbCoef = parseFloat(((mb.stake / 100) * 0.35).toFixed(2));
+        const rate = parseFloat(compensationRate) || 0;
+        let mbDeduction = 0;
+        if (settleStatus === 'win') {
+          mbDeduction = mbCoef * mb.odds * rate;
+          mbCompInfo = `(代投汇率补偿: 扣除 ${mbCoef}欧×${mb.odds}×${rate} = ￥${mbDeduction.toFixed(2)})`;
+        } else if (settleStatus === 'half-win') {
+          mbDeduction = mbCoef * ((mb.odds + 1) / 2) * rate;
+          mbCompInfo = `(代投汇率补偿: 扣除 ${mbCoef}欧×((${mb.odds}+1)/2)×${rate} = ￥${mbDeduction.toFixed(2)})`;
+        }
+        mbPayout = Math.max(0, mbPayout - mbDeduction);
+      }
+
+      // Apply the same ratio for consistency
+      mbPayout = parseFloat((mbPayout * ratio).toFixed(2));
+
+      const mbCleanNotes = mb.notes ? mb.notes.replace(/\(代投汇率补偿:.*?\)/g, '').trim() : '';
+      const mbUpdatedNotes = mbCompInfo ? `${mbCleanNotes} ${mbCompInfo}`.trim() : mbCleanNotes;
+
+      const mbUpdatedBet: Bet = {
+        ...mb,
+        status: settleStatus,
+        payout: mbPayout,
+        settledAt: Date.now(),
+        notes: mbUpdatedNotes
+      };
+      allUpdatedBets.push(mbUpdatedBet);
+
+      const mbPayoutTxId = generateId();
+      if (mbPayout > 0) {
+        allNewTxs.push({
+          id: mbPayoutTxId,
+          memberId: mb.memberId,
+          memberName: mb.memberName,
+          type: isVoid ? ('bet_refund' as const) : ('bet_payout' as const),
+          amount: mbPayout,
+          relatedId: mb.id,
+          description: isVoid 
+            ? `退款【${mb.matchName}】 (走水退本金 ${mbPayout})` 
+            : `派奖【${mb.matchName}】: ${mb.playType} (赔率 ${mb.odds}, 本金 ${mb.stake}, 返奖 ${mbPayout})${mbCompInfo ? ' ' + mbCompInfo : ''}`,
+          createdAt: Date.now()
+        });
+      }
+    }
+
+    const allBetIds = allUpdatedBets.map(b => b.id);
 
     if (dbMode === 'supabase') {
       const client = getSupabaseClient(supabaseUrl, supabaseKey);
       if (client) {
         setSyncing(true);
         try {
-          const { error: err1 } = await client.from('wc_bets').update({
-            status: updatedBet.status,
-            payout: updatedBet.payout,
-            settled_at: updatedBet.settledAt,
-            notes: updatedBet.notes
-          }).eq('id', settleBetId);
+          // Prepare upsert payload for bets
+          const betsPayload = allUpdatedBets.map(b => ({
+            id: b.id,
+            member_id: b.memberId,
+            member_name: b.memberName,
+            match_name: b.matchName,
+            play_type: b.playType,
+            odds: b.odds,
+            stake: b.stake,
+            status: b.status,
+            payout: b.payout,
+            created_at: b.createdAt,
+            settled_at: b.settledAt || null,
+            notes: b.notes || null
+          }));
+
+          const { error: err1 } = await client.from('wc_bets').upsert(betsPayload);
           if (err1) throw err1;
 
+          // Delete existing payout/refund transactions for all affected bets
           const { error: err2 } = await client.from('wc_transactions')
             .delete()
-            .eq('related_id', bet.id)
+            .in('related_id', allBetIds)
             .in('type', ['bet_payout', 'bet_refund']);
           if (err2) throw err2;
 
-          if (newPayoutTx) {
-            const { error: err3 } = await client.from('wc_transactions').insert({
-              id: newPayoutTx.id,
-              member_id: newPayoutTx.memberId,
-              member_name: newPayoutTx.memberName,
-              type: newPayoutTx.type,
-              amount: newPayoutTx.amount,
-              related_id: newPayoutTx.relatedId,
-              description: newPayoutTx.description,
-              created_at: newPayoutTx.createdAt
-            });
+          // Insert new payout/refund transactions
+          if (allNewTxs.length > 0) {
+            const txsPayload = allNewTxs.map(ntx => ({
+              id: ntx.id,
+              member_id: ntx.memberId,
+              member_name: ntx.memberName,
+              type: ntx.type,
+              amount: ntx.amount,
+              related_id: ntx.relatedId,
+              description: ntx.description,
+              created_at: ntx.createdAt
+            }));
+
+            const { error: err3 } = await client.from('wc_transactions').insert(txsPayload);
             if (err3) throw err3;
           }
         } catch (err: any) {
@@ -992,11 +1116,18 @@ export default function App() {
       }
     }
 
-    const newTxs = newPayoutTx ? [newPayoutTx, ...filteredTxs] : filteredTxs;
-    setBets(bets.map(b => b.id === settleBetId ? updatedBet : b));
-    setTransactions(newTxs);
+    const filteredTxs = transactions.filter(t => 
+      !(t.relatedId && allBetIds.includes(t.relatedId) && (t.type === 'bet_payout' || t.type === 'bet_refund'))
+    );
+
+    setBets(bets.map(b => {
+      const updated = allUpdatedBets.find(ub => ub.id === b.id);
+      return updated ? updated : b;
+    }));
+    setTransactions([...allNewTxs, ...filteredTxs]);
     setSettleModalOpen(false);
     setSettleBetId(null);
+    setIsBatchSettle(false);
   };
 
   // Cancel/Delete Bet
@@ -2432,6 +2563,92 @@ export default function App() {
                       </div>
                     )}
                   </div>
+
+                  {/* Batch Settle Option */}
+                  {(() => {
+                    const matchingBets = bets.filter(b => 
+                      b.id !== bet.id &&
+                      b.status === 'pending' &&
+                      b.matchName === bet.matchName &&
+                      b.playType === bet.playType &&
+                      b.odds === bet.odds
+                    );
+                    
+                    if (matchingBets.length === 0) return null;
+                    
+                    return (
+                      <div className="border border-slate-750 rounded-lg p-3 bg-slate-900/60 mt-2 text-left space-y-3 animate-fade-in select-none">
+                        <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-300 m-0">
+                          <input 
+                            type="checkbox" 
+                            className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-[var(--primary)] focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                            checked={isBatchSettle}
+                            onChange={e => setIsBatchSettle(e.target.checked)}
+                          />
+                          <span>👥 同场同玩法合并结算 (共 {matchingBets.length} 笔待结)</span>
+                        </label>
+                        
+                        {isBatchSettle && (
+                          <div className="space-y-1.5 pt-2 border-t border-slate-800/80 text-[11px] text-slate-400 max-h-[140px] overflow-y-auto pr-1">
+                            {matchingBets.map(mb => {
+                              let mbExpectedPayout = 0;
+                              if (settleStatus === 'win') {
+                                mbExpectedPayout = mb.stake * mb.odds;
+                              } else if (settleStatus === 'half-win') {
+                                mbExpectedPayout = mb.stake + mb.stake * (mb.odds - 1) / 2;
+                              } else if (settleStatus === 'loss') {
+                                mbExpectedPayout = 0;
+                              } else if (settleStatus === 'half-loss') {
+                                mbExpectedPayout = mb.stake / 2;
+                              } else if (settleStatus === 'void') {
+                                mbExpectedPayout = mb.stake;
+                              }
+
+                              if (useCompensation && (settleStatus === 'win' || settleStatus === 'half-win')) {
+                                const mbCoef = parseFloat(((mb.stake / 100) * 0.35).toFixed(2));
+                                const rate = parseFloat(compensationRate) || 0;
+                                let mbDeduction = 0;
+                                if (settleStatus === 'win') {
+                                  mbDeduction = mbCoef * mb.odds * rate;
+                                } else if (settleStatus === 'half-win') {
+                                  mbDeduction = mbCoef * ((mb.odds + 1) / 2) * rate;
+                                }
+                                mbExpectedPayout = Math.max(0, mbExpectedPayout - mbDeduction);
+                              }
+
+                              // Calculate the ratio of the main bet manually modified payout vs expected payout
+                              let mainExpected = 0;
+                              if (settleStatus === 'win') mainExpected = bet.stake * bet.odds;
+                              else if (settleStatus === 'half-win') mainExpected = bet.stake + bet.stake * (bet.odds - 1) / 2;
+                              else if (settleStatus === 'loss') mainExpected = 0;
+                              else if (settleStatus === 'half-loss') mainExpected = bet.stake / 2;
+                              else if (settleStatus === 'void') mainExpected = bet.stake;
+
+                              if (useCompensation && (settleStatus === 'win' || settleStatus === 'half-win')) {
+                                const mainCoef = parseFloat(compensationCoef) || 0;
+                                const rate = parseFloat(compensationRate) || 0;
+                                let mainDeduction = 0;
+                                if (settleStatus === 'win') mainDeduction = mainCoef * bet.odds * rate;
+                                else if (settleStatus === 'half-win') mainDeduction = mainCoef * ((bet.odds + 1) / 2) * rate;
+                                mainExpected = Math.max(0, mainExpected - mainDeduction);
+                              }
+
+                              const mainPayoutVal = parseFloat(settlePayout);
+                              const rat = mainExpected > 0 ? (isNaN(mainPayoutVal) ? 1.0 : mainPayoutVal / mainExpected) : 1.0;
+                              const finalMbPayout = mbExpectedPayout * rat;
+
+                              return (
+                                <div key={mb.id} className="flex justify-between items-center py-1 border-b border-slate-950/40 last:border-0">
+                                  <span>👤 {mb.memberName} (本金: ￥{mb.stake})</span>
+                                  <span className="font-bold text-white">预计派奖: ￥{finalMbPayout.toFixed(2)}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   <div className="flex gap-5 justify-end pt-2">
                     <button type="button" className="btn btn-secondary" onClick={() => setSettleModalOpen(false)}>
