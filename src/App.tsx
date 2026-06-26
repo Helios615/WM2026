@@ -171,7 +171,7 @@ export default function App() {
     };
   };
 
-  const { totalStake: batchTotalStake, totalPayout: batchTotalPayout, totalProfit: batchTotalProfit } = getBatchTotals();
+  const { totalStake: batchTotalStake, totalProfit: batchTotalProfit } = getBatchTotals();
 
   // Real-time Bet Calculator values
   const calcOdds = parseFloat(betOdds) || 0;
