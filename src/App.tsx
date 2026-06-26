@@ -144,6 +144,35 @@ export default function App() {
   const [betStake, setBetStake] = useState('');
   const [betNotes, setBetNotes] = useState('');
 
+  // Batch Bet states
+  const [isBatchMode, setIsBatchMode] = useState(false);
+  const [batchMemberIds, setBatchMemberIds] = useState<string[]>([]);
+  const [batchCustomStakes, setBatchCustomStakes] = useState<Record<string, string>>({});
+  const [batchCustomNotes, setBatchCustomNotes] = useState<Record<string, string>>({});
+
+  // Calculation of batch totals
+  const getBatchTotals = () => {
+    let totalStake = 0;
+    const odds = parseFloat(betOdds) || 0;
+    
+    batchMemberIds.forEach(mId => {
+      const customStake = batchCustomStakes[mId];
+      const stake = parseFloat(customStake !== undefined && customStake !== '' ? customStake : betStake) || 0;
+      totalStake += stake;
+    });
+
+    const totalPayout = totalStake * odds;
+    const totalProfit = totalPayout - totalStake;
+    
+    return {
+      totalStake,
+      totalPayout,
+      totalProfit
+    };
+  };
+
+  const { totalStake: batchTotalStake, totalPayout: batchTotalPayout, totalProfit: batchTotalProfit } = getBatchTotals();
+
   // Real-time Bet Calculator values
   const calcOdds = parseFloat(betOdds) || 0;
   const calcStake = parseFloat(betStake) || 0;
@@ -611,93 +640,166 @@ export default function App() {
   // Place Bet
   const handlePlaceBet = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!betMemberId) {
-      alert('请选择投注人！');
-      return;
-    }
     if (!betHomeTeam.trim() || !betAwayTeam.trim()) {
       alert('请输入比赛双方队伍名称！');
       return;
     }
     const odds = parseFloat(betOdds);
-    const stake = parseFloat(betStake);
     if (isNaN(odds) || odds <= 1) {
       alert('请输入有效的赔率（必须大于 1.0）！');
       return;
     }
-    if (isNaN(stake) || stake <= 0) {
-      alert('请输入有效的下注本金！');
-      return;
-    }
 
-    const memberSum = memberSummaries.find(ms => ms.member.id === betMemberId);
-    if (!memberSum) return;
-
-    if (stake > memberSum.currentBalance) {
-      if (!confirm(`下注本金 (${stake}元) 超过了该成员的可用余额 (${memberSum.currentBalance.toFixed(2)}元)。是否允许透支下注？`)) {
-        return;
-      }
-    }
-
-    const betId = generateId();
     const matchName = `${betHomeTeam.trim()} vs ${betAwayTeam.trim()}`;
     const playType = `${betPlayType} - ${betPlayDetail.trim() || '无具体玩法描述'}`;
 
-    const newBet: Bet = {
-      id: betId,
-      memberId: betMemberId,
-      memberName: memberSum.member.name,
-      matchName,
-      playType,
-      odds,
-      stake,
-      status: 'pending',
-      payout: 0,
-      createdAt: Date.now(),
-      notes: betNotes.trim()
-    };
+    const newBets: Bet[] = [];
+    const newTxs: Transaction[] = [];
 
-    const newTx: Transaction = {
-      id: generateId(),
-      memberId: betMemberId,
-      memberName: memberSum.member.name,
-      type: 'bet_place',
-      amount: -stake,
-      relatedId: betId,
-      description: `下注【${matchName}】: ${playType} (赔率 ${odds}, 本金 ${stake})`,
-      createdAt: Date.now()
-    };
+    if (isBatchMode) {
+      if (batchMemberIds.length === 0) {
+        alert('请选择至少一个投注人！');
+        return;
+      }
+      const overdraftMembers: { name: string; balance: number; stake: number }[] = [];
+      for (const mId of batchMemberIds) {
+        const memberSum = memberSummaries.find(ms => ms.member.id === mId);
+        if (!memberSum) continue;
+
+        const customStakeStr = batchCustomStakes[mId];
+        const stake = parseFloat(customStakeStr !== undefined && customStakeStr !== '' ? customStakeStr : betStake);
+        if (isNaN(stake) || stake <= 0) {
+          alert(`请输入成员【${memberSum.member.name}】的有效下注本金！`);
+          return;
+        }
+
+        if (stake > memberSum.currentBalance) {
+          overdraftMembers.push({
+            name: memberSum.member.name,
+            balance: memberSum.currentBalance,
+            stake
+          });
+        }
+
+        const customNote = batchCustomNotes[mId];
+        const notes = customNote !== undefined ? customNote.trim() : betNotes.trim();
+
+        const betId = generateId();
+        newBets.push({
+          id: betId,
+          memberId: mId,
+          memberName: memberSum.member.name,
+          matchName,
+          playType,
+          odds,
+          stake,
+          status: 'pending',
+          payout: 0,
+          createdAt: Date.now(),
+          notes
+        });
+
+        newTxs.push({
+          id: generateId(),
+          memberId: mId,
+          memberName: memberSum.member.name,
+          type: 'bet_place',
+          amount: -stake,
+          relatedId: betId,
+          description: `下注【${matchName}】: ${playType} (赔率 ${odds}, 本金 ${stake})`,
+          createdAt: Date.now()
+        });
+      }
+
+      if (overdraftMembers.length > 0) {
+        const names = overdraftMembers.map(o => `${o.name} (下注 ${o.stake}元 / 可用 ${o.balance.toFixed(2)}元)`).join('\n');
+        if (!confirm(`以下成员的下注本金超过了可用余额：\n${names}\n\n是否允许这些成员透支下注？`)) {
+          return;
+        }
+      }
+    } else {
+      // Single Mode
+      if (!betMemberId) {
+        alert('请选择投注人！');
+        return;
+      }
+      const stake = parseFloat(betStake);
+      if (isNaN(stake) || stake <= 0) {
+        alert('请输入有效的下注本金！');
+        return;
+      }
+      const memberSum = memberSummaries.find(ms => ms.member.id === betMemberId);
+      if (!memberSum) return;
+
+      if (stake > memberSum.currentBalance) {
+        if (!confirm(`下注本金 (${stake}元) 超过了该成员的可用余额 (${memberSum.currentBalance.toFixed(2)}元)。是否允许透支下注？`)) {
+          return;
+        }
+      }
+
+      const betId = generateId();
+      newBets.push({
+        id: betId,
+        memberId: betMemberId,
+        memberName: memberSum.member.name,
+        matchName,
+        playType,
+        odds,
+        stake,
+        status: 'pending',
+        payout: 0,
+        createdAt: Date.now(),
+        notes: betNotes.trim()
+      });
+
+      newTxs.push({
+        id: generateId(),
+        memberId: betMemberId,
+        memberName: memberSum.member.name,
+        type: 'bet_place',
+        amount: -stake,
+        relatedId: betId,
+        description: `下注【${matchName}】: ${playType} (赔率 ${odds}, 本金 ${stake})`,
+        createdAt: Date.now()
+      });
+    }
 
     if (dbMode === 'supabase') {
       const client = getSupabaseClient(supabaseUrl, supabaseKey);
       if (client) {
         setSyncing(true);
         try {
-          const { error: err1 } = await client.from('wc_bets').insert({
-            id: newBet.id,
-            member_id: newBet.memberId,
-            member_name: newBet.memberName,
-            match_name: newBet.matchName,
-            play_type: newBet.playType,
-            odds: newBet.odds,
-            stake: newBet.stake,
-            status: newBet.status,
-            payout: newBet.payout,
-            created_at: newBet.createdAt,
-            notes: newBet.notes
-          });
+          // Prepare payload for wc_bets
+          const betsPayload = newBets.map(nb => ({
+            id: nb.id,
+            member_id: nb.memberId,
+            member_name: nb.memberName,
+            match_name: nb.matchName,
+            play_type: nb.playType,
+            odds: nb.odds,
+            stake: nb.stake,
+            status: nb.status,
+            payout: nb.payout,
+            created_at: nb.createdAt,
+            notes: nb.notes
+          }));
+
+          // Prepare payload for wc_transactions
+          const txsPayload = newTxs.map(ntx => ({
+            id: ntx.id,
+            member_id: ntx.memberId,
+            member_name: ntx.memberName,
+            type: ntx.type,
+            amount: ntx.amount,
+            related_id: ntx.relatedId,
+            description: ntx.description,
+            created_at: ntx.createdAt
+          }));
+
+          const { error: err1 } = await client.from('wc_bets').insert(betsPayload);
           if (err1) throw err1;
 
-          const { error: err2 } = await client.from('wc_transactions').insert({
-            id: newTx.id,
-            member_id: newTx.memberId,
-            member_name: newTx.memberName,
-            type: newTx.type,
-            amount: newTx.amount,
-            related_id: newTx.relatedId,
-            description: newTx.description,
-            created_at: newTx.createdAt
-          });
+          const { error: err2 } = await client.from('wc_transactions').insert(txsPayload);
           if (err2) throw err2;
         } catch (err: any) {
           console.error(err);
@@ -709,8 +811,8 @@ export default function App() {
       }
     }
 
-    setBets([newBet, ...bets]);
-    setTransactions([newTx, ...transactions]);
+    setBets([...newBets, ...bets]);
+    setTransactions([...newTxs, ...transactions]);
 
     // Reset Form
     setBetHomeTeam('');
@@ -721,7 +823,10 @@ export default function App() {
     setBetNotes('');
     setHomeTeamQuery('');
     setAwayTeamQuery('');
-    alert('注单录入成功！');
+    setBatchMemberIds([]);
+    setBatchCustomStakes({});
+    setBatchCustomNotes({});
+    alert(isBatchMode ? `批量录入成功！共录入 ${newBets.length} 笔注单。` : '注单录入成功！');
   };
 
   // Recalculate compensated payout
@@ -1523,24 +1628,99 @@ export default function App() {
           <div className="space-y-6">
             {/* Input Form Box */}
             <div className="glass-panel" id="bet-entry-form-header">
-              <h3 className="title-font text-lg font-bold mb-4 flex items-center gap-2">
-                ✍️ 录入新的下注单 (Bet Entry)
-              </h3>
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4">
+                <h3 className="title-font text-lg font-bold flex items-center gap-2 m-0 animate-fade-in">
+                  ✍️ 录入新的下注单 (Bet Entry)
+                </h3>
+                <div className="flex rounded-md bg-slate-800 p-0.5 border border-slate-700 select-none">
+                  <button
+                    type="button"
+                    className={`px-3 py-1 text-xs rounded-md transition-all ${!isBatchMode ? 'bg-[#0f172a] text-[var(--primary)] font-bold border border-slate-700 shadow-sm' : 'text-slate-400 hover:text-white'}`}
+                    onClick={() => setIsBatchMode(false)}
+                  >
+                    👤 单人录入
+                  </button>
+                  <button
+                    type="button"
+                    className={`px-3 py-1 text-xs rounded-md transition-all ${isBatchMode ? 'bg-[#0f172a] text-[var(--primary)] font-bold border border-slate-700 shadow-sm' : 'text-slate-400 hover:text-white'}`}
+                    onClick={() => setIsBatchMode(true)}
+                  >
+                    👥 批量录入
+                  </button>
+                </div>
+              </div>
+              
               <form onSubmit={handlePlaceBet} className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
                 {/* Line 1 */}
-                <div className="form-group">
-                  <label className="form-label">选择投注人</label>
-                  <select 
-                    className="form-input"
-                    value={betMemberId}
-                    onChange={e => setBetMemberId(e.target.value)}
-                    required
-                  >
-                    <option value="">-- 请选择投注朋友 --</option>
-                    {members.map(m => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
-                    ))}
-                  </select>
+                <div className={`form-group ${isBatchMode ? 'md:col-span-3' : ''}`}>
+                  {!isBatchMode ? (
+                    <>
+                      <label className="form-label">选择投注人</label>
+                      <select 
+                        className="form-input"
+                        value={betMemberId}
+                        onChange={e => setBetMemberId(e.target.value)}
+                        required={!isBatchMode}
+                      >
+                        <option value="">-- 请选择投注朋友 --</option>
+                        {members.map(m => (
+                          <option key={m.id} value={m.id}>{m.name}</option>
+                        ))}
+                      </select>
+                    </>
+                  ) : (
+                    <div className="space-y-2 animate-fade-in">
+                      <div className="flex justify-between items-center">
+                        <label className="form-label mb-0">选择投注人 (可多选)</label>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            className="text-[11px] text-[var(--primary)] hover:underline font-medium"
+                            onClick={() => setBatchMemberIds(members.map(m => m.id))}
+                          >
+                            全选
+                          </button>
+                          <span className="text-[11px] text-slate-700">|</span>
+                          <button
+                            type="button"
+                            className="text-[11px] text-[var(--primary)] hover:underline font-medium"
+                            onClick={() => setBatchMemberIds([])}
+                          >
+                            全不选
+                          </button>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2 p-3 bg-slate-900/60 rounded-lg border border-slate-800/80 max-h-[160px] overflow-y-auto">
+                        {members.map(m => {
+                          const isSelected = batchMemberIds.includes(m.id);
+                          return (
+                            <label
+                              key={m.id}
+                              className={`flex items-center gap-2 p-2 rounded-md border cursor-pointer select-none transition-all ${
+                                isSelected 
+                                  ? 'border-[var(--primary)] bg-[var(--primary-glow)] text-[var(--primary)] font-bold scale-[1.02]' 
+                                  : 'border-slate-800 bg-slate-950/40 text-slate-400 hover:text-slate-200'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                className="hidden"
+                                onChange={() => {
+                                  if (isSelected) {
+                                    setBatchMemberIds(batchMemberIds.filter(id => id !== m.id));
+                                  } else {
+                                    setBatchMemberIds([...batchMemberIds, m.id]);
+                                  }
+                                }}
+                              />
+                              <span className="text-xs truncate">{m.name}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="form-group suggestions-container">
@@ -1620,7 +1800,7 @@ export default function App() {
                 <div className="form-group">
                   <div className="form-row">
                     <div>
-                      <label className="form-label">下注赔率 (十进制)</label>
+                      <label className="form-label">下注赔率</label>
                       <input 
                         type="number" 
                         step="0.001" 
@@ -1632,7 +1812,7 @@ export default function App() {
                       />
                     </div>
                     <div>
-                      <label className="form-label">本金 (元)</label>
+                      <label className="form-label">{isBatchMode ? '默认本金 (元)' : '本金 (元)'}</label>
                       <input 
                         type="number" 
                         step="1" 
@@ -1640,41 +1820,119 @@ export default function App() {
                         className="form-input"
                         value={betStake}
                         onChange={e => setBetStake(e.target.value)}
-                        required
+                        required={!isBatchMode || Object.keys(batchCustomStakes).length === 0}
                       />
                     </div>
                   </div>
                 </div>
 
+                {/* Batch Custom Config Section */}
+                {isBatchMode && batchMemberIds.length > 0 && (
+                  <div className="md:col-span-3 bg-slate-900/40 border border-slate-800/80 rounded-lg p-4 space-y-3 my-2 text-left animate-fade-in">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1">
+                      <span className="text-xs font-bold text-slate-350 flex items-center gap-1.5">
+                        👥 已选成员个性化本金/备注配置 ({batchMemberIds.length} 人)
+                      </span>
+                      <span className="text-[10px] text-slate-500">
+                        提示：留空将默认使用最下方的“默认本金”和“默认备注”
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[220px] overflow-y-auto pr-1">
+                      {batchMemberIds.map(mId => {
+                        const member = members.find(m => m.id === mId);
+                        if (!member) return null;
+                        const memberSum = memberSummaries.find(ms => ms.member.id === mId);
+                        const balance = memberSum ? memberSum.currentBalance : 0;
+                        
+                        return (
+                          <div key={mId} className="bg-slate-950/60 border border-slate-805 rounded p-2.5 space-y-2">
+                            <div className="flex justify-between items-center">
+                              <span className="text-xs font-semibold text-slate-300">{member.name}</span>
+                              <span className="text-[10px] text-slate-500">
+                                余额: <span className={balance >= 0 ? 'text-slate-400' : 'text-red-400'}>￥{balance.toFixed(2)}</span>
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <input
+                                  type="number"
+                                  placeholder={`本金: ${betStake || '无'}`}
+                                  className="form-input text-xs py-1 px-2"
+                                  value={batchCustomStakes[mId] || ''}
+                                  onChange={e => setBatchCustomStakes({
+                                    ...batchCustomStakes,
+                                    [mId]: e.target.value
+                                  })}
+                                />
+                              </div>
+                              <div>
+                                <input
+                                  type="text"
+                                  placeholder={`自定义备注`}
+                                  className="form-input text-xs py-1 px-2"
+                                  value={batchCustomNotes[mId] || ''}
+                                  onChange={e => setBatchCustomNotes({
+                                    ...batchCustomNotes,
+                                    [mId]: e.target.value
+                                  })}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* 实时收益计算器预览 */}
-                {(calcOdds > 0 && calcStake > 0) && (
+                {(calcOdds > 0 && (calcStake > 0 || (isBatchMode && batchMemberIds.length > 0))) && (
                   <div className="md:col-span-2 bg-[#0e1626]/80 border border-slate-800/60 rounded-lg p-3 space-y-1.5 backdrop-blur-sm">
                     <div className="text-[11px] text-[var(--text-muted)] font-medium tracking-wide uppercase flex items-center gap-1.5">
-                      <span>📊 预期收益计算器</span>
+                      <span>📊 预期收益计算器 {isBatchMode ? `(共选 ${batchMemberIds.length} 人)` : ''}</span>
                     </div>
                     <div className="grid grid-cols-2 gap-4 pt-0.5">
-                      <div className="bg-[#1e293b]/40 p-2.5 rounded border border-slate-800/40">
-                        <div className="text-[10px] text-[var(--text-muted)]">预计返还 (本利)</div>
-                        <div className="text-sm font-bold text-[var(--primary)] mt-0.5">
-                          ￥{expectedPayout.toFixed(2)}
-                        </div>
-                      </div>
-                      <div className="bg-[#1e293b]/40 p-2.5 rounded border border-slate-800/40">
-                        <div className="text-[10px] text-[var(--text-muted)]">预计净利润</div>
-                        <div className="text-sm font-bold text-[var(--success)] mt-0.5">
-                          +￥{netProfit.toFixed(2)}
-                        </div>
-                      </div>
+                      {isBatchMode ? (
+                        <>
+                          <div className="bg-[#1e293b]/40 p-2.5 rounded border border-slate-800/40">
+                            <div className="text-[10px] text-[var(--text-muted)]">总下注本金</div>
+                            <div className="text-sm font-bold text-white mt-0.5">
+                              ￥{batchTotalStake.toFixed(2)}
+                            </div>
+                          </div>
+                          <div className="bg-[#1e293b]/40 p-2.5 rounded border border-slate-800/40">
+                            <div className="text-[10px] text-[var(--text-muted)]">总预计净利润</div>
+                            <div className="text-sm font-bold text-[var(--success)] mt-0.5">
+                              +￥{batchTotalProfit.toFixed(2)}
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="bg-[#1e293b]/40 p-2.5 rounded border border-slate-800/40">
+                            <div className="text-[10px] text-[var(--text-muted)]">预计返还 (本利)</div>
+                            <div className="text-sm font-bold text-[var(--primary)] mt-0.5">
+                              ￥{expectedPayout.toFixed(2)}
+                            </div>
+                          </div>
+                          <div className="bg-[#1e293b]/40 p-2.5 rounded border border-slate-800/40">
+                            <div className="text-[10px] text-[var(--text-muted)]">预计净利润</div>
+                            <div className="text-sm font-bold text-[var(--success)] mt-0.5">
+                              +￥{netProfit.toFixed(2)}
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 )}
 
                 {/* Line 3 */}
                 <div className="form-group md:col-span-2 m-0">
-                  <label className="form-label">注单备注</label>
+                  <label className="form-label">{isBatchMode ? '默认备注' : '注单备注'}</label>
                   <input 
                     type="text" 
-                    placeholder="例：阿强微信发的单，帮代投"
+                    placeholder="例：微信群统一跟单"
                     className="form-input"
                     value={betNotes}
                     onChange={e => setBetNotes(e.target.value)}
@@ -1683,7 +1941,7 @@ export default function App() {
 
                 <div className="m-0">
                   <button type="submit" className="btn btn-primary w-full h-[40px]">
-                    <Plus size={16} /> 录入此注单
+                    <Plus size={16} /> {isBatchMode ? `批量录入注单 (${batchMemberIds.length}笔)` : '录入此注单'}
                   </button>
                 </div>
               </form>
